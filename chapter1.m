@@ -1,4 +1,39 @@
 close all
+
+%% User specific variables in order to test
+% set location for the Australian National University.
+latitude = -35.2;
+longitude = 149.2;
+
+% set the time start and end times. All in UTC with format 
+time_format = 'ddmmyyyy';
+start_time = '01012018';
+end_time = '01012019';
+resolution_in_minutes = 10;
+
+%% Pre-cursory time logic
+time_stamps = (datenum(start_time,time_format):resolution_in_minutes/1440:datenum(end_time,time_format))';
+% derive the "n" variable for these time steps, this describes the day
+% number from start of the year. It appears that each year is treated the
+% same for the solar geometry options and so we can take advantage of the
+% datevector operations in matlab.
+
+% n is slightly different in leap years, this must be considered.
+% make datevec
+datevecs = datevec(time_stamps);
+% extract only the year of each time step
+time_year = datevecs(:,1);
+% use modulo division by 4 == 0 to indicate leap year
+leap_year_ind = mod(time_year,4)==0;
+% find the start point of a leap year and non-leap year respectively.
+leap_year = datenum([zeros(length(time_stamps),1), datevecs(:,2:end)]) - datenum([0,1,1,0,0,0]);
+non_leap_year = datenum([ones(length(time_stamps),1), datevecs(:,2:end)]) - datenum([1,1,1,0,0,0]);
+% make an empty n
+n =zeros(size(time_stamps));
+% fill n with the leap year n or non-leap year n using the indices.
+n(leap_year_ind==1) = leap_year(leap_year_ind==1);
+n(leap_year_ind==0) = non_leap_year(leap_year_ind==0);
+
 %% 1.1 Sun - earth
 earth_diameter = 1.27*10^7; %m
 sun_diameter = 1.39*10^9; %m
@@ -32,16 +67,6 @@ f0_to_lambda = [0,0.002,0.005,0.012,0.023,0.033,0.040,0.047,0.056,0.065,0.071,..
     0.648,0.660,0.671,0.683,0.694,0.720,0.743,0.783,0.817,0.846,0.870,0.890,...
     0.921,0.941,0.968,0.981,0.988,0.992,0.996,0.999]';
 
-% plot
-figure('name','Energy spectrum')
-ax = plotyy(lambda,Gsc_lambda,lambda,f0_to_lambda);
-xlim([0 4])
-xlabel('Wavelength {\mu}m')
-ylabel(ax(1),'Solar spetral irradiance, W/m^2 {\mu}m')
-ylabel(ax(2),'CDF of the WRC spectrum')
-title('WRC standard spectral irradiance at 1 AU')
-
-
 % share in each type of irradiance: uv, visible and infra-red.
 lambda1 = 0;
 lambda2 = 0.38;
@@ -50,6 +75,24 @@ lambda4 = 10;
 uv_Energy = solar_constant * (f0_to_lambda(knnsearch(lambda,lambda2)) - f0_to_lambda(knnsearch(lambda,lambda1)));
 vis_Energy = solar_constant * (f0_to_lambda(knnsearch(lambda,lambda3)) - f0_to_lambda(knnsearch(lambda,lambda2)));
 ir_Energy = solar_constant * (f0_to_lambda(knnsearch(lambda,lambda4)) - f0_to_lambda(knnsearch(lambda,lambda3)));
+
+% plot
+figure('name','Energy spectrum')
+ax = plotyy(lambda,Gsc_lambda,lambda,f0_to_lambda);
+hold on
+y=0:2500;
+plot(ones(size(y)).*lambda2,y,':k')
+plot(ones(size(y)).*lambda3,y,':k')
+hold off
+text(0.1,1500,'UV')
+text(0.5,1500,'Vis')
+text(1.3,1500,'IR')
+xlim([0 2])
+ylim([0 2500])
+xlabel('Wavelength {\mu}m')
+ylabel(ax(1),'Solar spetral irradiance, W/m^2 {\mu}m')
+ylabel(ax(2),'CDF of the WRC spectrum')
+title('WRC standard spectral irradiance at 1 AU')
 
 % plot
 figure('name','solar energy share')
@@ -61,29 +104,26 @@ title('Energy proportions of the solar constant')
 % Variation in intensity assumed constant (though reportedly varies +-
 % 1.5%) However, variation in the earth-sun distance is considered.
 
-% january 1st:december 31st in 10min intervals
-n = 1:1/144:365;
 % extra terrestrial irradiance normal to the radiation on the nth perido of the year.
 extraterrestrial_irradiance = solar_constant.*(1+0.033.*cosd((360.*n)./365));
 
 % plot
 figure('name','extraterrestrial solar radiation')
-plot(n,extraterrestrial_irradiance)
+plot(datetime(datevec(time_stamps)),extraterrestrial_irradiance)
 ylabel('G_{0n}, W.m^2')
 xlabel('Day of Year')
-xlim([min(n),max(n)])
 title('Variation of extraterrestrial solar radiation with time of year')
 
 %% 1.5 Definitions.
 % air mass m, the ratio of mass of atmosphere through which beam radiation
 % passes to the mass it would pass through if the sun were directly
 % overhead (e.g. 1). 
-zenith_angle = -90:0.1:90;
-AM = 1./cosd(zenith_angle);
+zenith_angle_range = -90:0.1:90;
+AM = 1./cosd(zenith_angle_range);
 
 % plot
 figure('name','airmass')
-plot(zenith_angle,AM)
+plot(zenith_angle_range,AM)
 xlabel('Zenith angle (deg)')
 ylabel('Air Mass')
 ylim([0,10])
@@ -103,7 +143,7 @@ EoT = 229.2.*(0.000075+0.001868.*cosd(B)-0.032077.*sind(B)-0.014615.*cosd(2.*B)-
 
 %plot
 figure('name','Equation of Time')
-plot(n,EoT)
+plot(datetime(datevec(time_stamps)),EoT)
 xlabel('Day of year')
 ylabel('Equation of time, min')
 title('The equation of time in minutes, as a function of time of year')
@@ -112,7 +152,7 @@ title('The equation of time in minutes, as a function of time of year')
 % 149.2 latitude (+180 for 0:360 format.
 % see function at bottom of script
 
-solar_time = LocalTimeToSolarTime(datevec(datenum([2018,01,01,0,0,0])+n),9,149.12);
+solar_time = LocalTimeToSolarTime(datevec(datenum([2018,01,01,0,0,0])+n),9,longitude);
 % find the hour of each n time step as a decimal using the mins and seconds
 % of solar time. this can be used to derive the hour angle.
 solar_decimal_time = solar_time(:,4)+solar_time(:,5)./60+solar_time(:,6)/(60*60);
@@ -125,11 +165,11 @@ hour_angle = 15.*(solar_decimal_time-12/24);
 %Declination is the angular position of the sun at solar noon (i.e. when
 %the sun is on the local meridian), with respect to the plane of the eq
 %where north is positive.
-declination_angle = (23.45.*sind(360.*(284+n)./365))';
+declination_angle = 23.45.*sind(360.*(284+n)./365);
 
 %plot
 figure('name','Declination')
-plot(n,declination_angle)
+plot(datetime(datevec(time_stamps)),declination_angle)
 xlabel('Day of year')
 ylabel('Declination angle (degs.)')
 title('The solar decliation angle as a function of time of year')
@@ -146,7 +186,6 @@ azimuth = -180:15:180;
 [S,A] = meshgrid(slope,azimuth);
 slopes = reshape(S,[numel(S),1]);
 azimuths = reshape(A,[numel(A),1]);
-latitude = -35; % for Canberra.
 
 angles_of_incidence=zeros(length(declination_angle),length(azimuths));
 
@@ -163,21 +202,65 @@ end
 % and is therefore is simplified to
 zenith_angle = acosd( cosd(latitude).*cosd(declination_angle).*cosd(hour_angle)+sind(latitude).*sind(declination_angle) );
 
+% repeat the zenith angle to match all orientations calculated in the
+% angles of incidence so that a heat map can be plotted.
 zenith_angle_rep=repmat(zenith_angle,[1,size(angles_of_incidence,2)]);
+% isolate daytime periods by excluding incident angles where zenith>90;
+mean_incident_angle_at_day_time = angles_of_incidence;
 mean_incident_angle_at_day_time(zenith_angle_rep>90) = NaN;
+
 % plot
 figure('name','mean angle of incidence at each tilt azi at -35deg latitude')
-imagesc(slope,azimuth,reshape(nanmean(mean_incident_angle_at_day_time),[length(azimuth),length(slope)]))
+contourf(slope,azimuth,reshape(prctile(mean_incident_angle_at_day_time,15),[length(azimuth),length(slope)]))
 ylabel('azimuth of plane (deg -east : 0 south : +west)')
 xlabel('tilt of plane towards equator (0 = flat up, 180 = flat down)')
-title('heatmap of the mean angle of incidence. bluer = better')
+title({'25^{th} percentile angle of incidence at different panel tilt/azimuths.';'Only daylight hours are considered (\theta_z < 90)';'The lower the angle, the more energy received. 0 = perpendicular to sun'})
 xticks(slope)
 yticks(azimuth)
 xtickangle(90)
 colormap('cool')
+colorbar
+
+% The solar azimuth angle is in the range -180 to 180 degrees. 
+% The azimuth angle requires on certain precursors C1 C2 and C3
+
+hour_angle_east_west = acosd( tand(declination_angle)./tand(latitude) );
+
+C1 = abs(hour_angle) < hour_angle_east_west;
+C1(C1==0) = -1;
+C1(abs(tand(declination_angle)./tand(latitude))>1) = 1;
+
+C2 = (latitude.*(ones(size(declination_angle)).*latitude-declination_angle)) >= 0;
+C2(C2==0) = -1;
+
+C3 = hour_angle >= 0;
+C3(C3==0) = -1;
+
+pseudo_solar_azimuth_angle = asind( (sind(hour_angle).*cosd(declination_angle))./sind(zenith_angle) );
+solar_azimuth_angle = C1.*C2.*pseudo_solar_azimuth_angle + C3.*((1-C1.*C2)./2).*180;
+
+% there are possible corrections tha tmust be made for northern and
+% southern hemispheres, however, it appears by having sign conventions in
+% the latitude, that these are covered for. 
+
+% daylight hours
+daylight_hours = 2/15 .*acosd(-tand(latitude).*tand(declination_angle));
+
+% plot
+figure('name','daylight hours')
+plot(datetime(datevec(time_stamps)), daylight_hours)
+xlabel('Time')
+title('Number of daylight hours for specified latitude as function of time of year.')
+
+%profile angle
+azimuth = 25; 
+solar_altitude = asind( cosd(zenith_angle) );
+profile_angle = atand( tand(solar_altitude)./(cosd(solar_azimuth_angle - azimuth)) ); 
 
 
 
+
+%% functions
 
 function solar_time = LocalTimeToSolarTime(local_time_as_datevec, GMT_difference, longitude)
 % where GMT difference is the difference of the local time from Grenwich
