@@ -40,7 +40,17 @@ Bcn = extraterrestrial_irradiance .* Tb;
 % The clear sky beam horizontal irradiance Bch is then
 Bch = Bcn .* cosd(zenith_angle);
 
+% the Liu and Jordan 1960 method for clear sky diffuse on a horizontal
+% surface.
+% Td = Gd/G0 = 0.7210-0.294.*Tb
+Td = 0.2710 - 0.294.*Tb;
 
+% the clear sky diffuse horizontal irradiance is then
+Dch = extraterrestrial_irradiance .* Td;
+
+
+%% 2.9 Distribution of clear and cloudy days.
+clearness_index
 
 
 

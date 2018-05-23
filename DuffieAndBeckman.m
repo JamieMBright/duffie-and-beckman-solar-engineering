@@ -98,9 +98,17 @@ pa = ProfileAngle(zen,azs,azi);
 % geometric factor, Rb
 Rb = GeometricFactor(AOI,zen);
 
-% clear-sky beam
-[Bn, Bch, Tb] = HottelClearSky(elev,zen,E0n);
+% clear-sky beam normal, horizontal and transmission, Bn, Bhc and Tb.
+[Bn, Bhc, Tb] = HottelClearSky(elev,zen,E0n);
 
+% clear-sky diffuse horizontal and transmission, Dhc, Td.
+[Dhc, Td] = LiuAndJordan(Tb,E0n);
+
+% global horizontal irradiance, Ghc.
+Ghc = Bhc + Dhc;
+
+% clearness index, kT.
+kT = ClearnessIndex(Ghc,E0n);
 
 
 end
