@@ -1,3 +1,5 @@
+%% Chapter 1 Solar Radiation.
+
 close all
 
 %% User specific variables in order to test
@@ -6,9 +8,9 @@ latitude = -35.2;
 longitude = 149.2;
 
 % set the time start and end times. All in UTC with format 
-time_format = 'ddmmyyyy';
-start_time = '01012018';
-end_time = '01012019';
+time_format = 'yyyymmddHHMM';
+start_time = '201801010000';
+end_time = '201901010000';
 resolution_in_minutes = 10;
 
 %% Pre-cursory time logic
@@ -33,6 +35,9 @@ n =zeros(size(time_stamps));
 % fill n with the leap year n or non-leap year n using the indices.
 n(leap_year_ind==1) = leap_year(leap_year_ind==1);
 n(leap_year_ind==0) = non_leap_year(leap_year_ind==0);
+
+% need a conversion to local time.
+[time_zone_offset, daylight_savings] = tzoffset(datetime(datevec(time_stamps)));
 
 %% 1.1 Sun - earth
 earth_diameter = 1.27*10^7; %m
@@ -104,7 +109,7 @@ title('Energy proportions of the solar constant')
 % Variation in intensity assumed constant (though reportedly varies +-
 % 1.5%) However, variation in the earth-sun distance is considered.
 
-% extra terrestrial irradiance normal to the radiation on the nth perido of the year.
+% extra terrestrial irradiance normal to the radiation on the nth period of the year.
 extraterrestrial_irradiance = solar_constant.*(1+0.033.*cosd((360.*n)./365));
 
 % plot
@@ -152,10 +157,9 @@ title('The equation of time in minutes, as a function of time of year')
 % 149.2 latitude (+180 for 0:360 format.
 % see function at bottom of script
 
-solar_time = LocalTimeToSolarTime(datevec(datenum([2018,01,01,0,0,0])+n),9,longitude);
+[solar_time, solar_decimal_time] = LocalTimeToSolarTime(datevec(datenum([2018,01,01,0,0,0])+n),9,longitude);
 % find the hour of each n time step as a decimal using the mins and seconds
 % of solar time. this can be used to derive the hour angle.
-solar_decimal_time = solar_time(:,4)+solar_time(:,5)./60+solar_time(:,6)/(60*60);
 
 % the hour angle is 15degrees per hour times 1.5 hours before noon. 
 hour_angle = 15.*(solar_decimal_time-12/24);
@@ -209,6 +213,7 @@ zenith_angle_rep=repmat(zenith_angle,[1,size(angles_of_incidence,2)]);
 mean_incident_angle_at_day_time = angles_of_incidence;
 mean_incident_angle_at_day_time(zenith_angle_rep>90) = NaN;
 
+try
 % plot
 figure('name','mean angle of incidence at each tilt azi at -35deg latitude')
 contourf(slope,azimuth,reshape(prctile(mean_incident_angle_at_day_time,15),[length(azimuth),length(slope)]))
@@ -220,6 +225,8 @@ yticks(azimuth)
 xtickangle(90)
 colormap('cool')
 colorbar
+catch
+end
 
 % The solar azimuth angle is in the range -180 to 180 degrees. 
 % The azimuth angle requires on certain precursors C1 C2 and C3
@@ -241,7 +248,7 @@ solar_azimuth_angle = C1.*C2.*pseudo_solar_azimuth_angle + C3.*((1-C1.*C2)./2).*
 
 % there are possible corrections tha tmust be made for northern and
 % southern hemispheres, however, it appears by having sign conventions in
-% the latitude, that these are covered for. 
+% the latitude, that these are covered for? 
 
 % daylight hours
 daylight_hours = 2/15 .*acosd(-tand(latitude).*tand(declination_angle));
@@ -255,33 +262,57 @@ title('Number of daylight hours for specified latitude as function of time of ye
 %profile angle
 azimuth = 25; 
 solar_altitude = asind( cosd(zenith_angle) );
-profile_angle = atand( tand(solar_altitude)./(cosd(solar_azimuth_angle - azimuth)) ); 
+profile_angle = atand( tand(solar_altitude)./cosd(solar_azimuth_angle - azimuth) ); 
 
 
+%% 1.7 Angles for Tracking Surfaces
+% tracking angles for a single adjustment daily that makes beam nomal to
+% surface at solar noon. Horizontal axis east-west
+tracking_incident_angle_single_daily_adjust = acosd( sind(declination_angle).^2 + cosd(declination_angle).^2.*cosd(hour_angle) );
+tracking_slope_single_daily_adjust = abs(ones(size(declination_angle)).*latitude-declination_angle);
+tracking_azimuth_angle_single_daily_adjust = zeros(size(declination_angle));
+tracking_azimuth_angle_single_daily_adjust((ones(size(declination_angle)).*latitude-declination_angle)>0)=0;
+tracking_azimuth_angle_single_daily_adjust((ones(size(declination_angle)).*latitude-declination_angle)<0)=180;
 
+% for a plane rotated about east-west axis with continuous adjustment to
+% minmus AOI.Horizontal axis east-west
+tracking_angle_of_incidence_continuous_motion = acosd( sqrt(1 - cosd(declination_angle).^2.*sind(hour_angle).^2) );
+tracking_slope_continuous_motion = atand( tand(zenith_angle).*abs(cosd(solar_azimuth_angle)) );
+tracking_azimuth_angle_continuous_motion = zeros(size(solar_azimuth_angle));
+tracking_azimuth_angle_single_daily_adjust(solar_azimuth_angle>0)=90;
+tracking_azimuth_angle_single_daily_adjust(solar_azimuth_angle<0)=-90;
 
-%% functions
+% for a plane with fixed slope rotated about a vertical axis. The AOI is
+% minimised when the azimuth and solar_azimuth are equal.
+fixed_slope = 30;
+tracking_angle_of_incidence_fixed_slope_vertical_rotation = ...
+    acosd( cosd(zenith_angle).*cosd(fixed_slope) + sind(zenith_angle).*sind(fixed_slope) );
+tracking_azimuth_angle_fixed_slope_vertical_rotation = solar_azimuth_angle;
 
-function solar_time = LocalTimeToSolarTime(local_time_as_datevec, GMT_difference, longitude)
-% where GMT difference is the difference of the local time from Grenwich
-% mean time. e.g. NSW is +9/10/11 depending on DST.
-    % derive the day of year, n
-    start_of_year = datenum([local_time_as_datevec(:,1),ones(length(local_time_as_datevec(:,1)),2),zeros(length(local_time_as_datevec(:,1)),3)]);
-    n = datenum(local_time_as_datevec) - start_of_year;
-    B = (n-1).*360/365;
-    EoT = 229.2.*(0.000075+0.001868.*cosd(B)-0.032077.*sind(B)-0.014615.*cosd(2.*B)-0.04089.*sind(2.*B));
-    solar_time_diff_to_standard_time = 4.*(longitude - 15*GMT_difference) + EoT; % in mins
-    solar_time = datenum(local_time_as_datevec) + solar_time_diff_to_standard_time/1440;
-    solar_time = datevec(solar_time);
-end
+% for a plane rotated about a north-south axis parallel to earths axis with
+% continuous adjustment to minimise AOI.
+tracking_angle_of_incidence_NS_rotation = acosd(cosd(declination_angle));
+tracking_slope_NS_rotation = atand( tand(latitude)./cosd(solar_azimuth_angle) );
+tracking_angle_NS_rotation_primed = acosd( cosd(zenith_angle).*cosd(latitude) + sind(zenith_angle).*sind(latitude));
+C1_NS_rotated = ones(size(zenith_angle));
+C1_NS_rotated((atand((sind(zenith_angle).*sind(solar_azimuth_angle))./(cosd(tracking_angle_NS_rotation_primed).*sind(latitude)))+solar_azimuth_angle) == 0) = 0;
+C2_NS_rotated = ones(size(zenith_angle));
+C2_NS_rotated(solar_azimuth_angle<0) = -1;
+tracking_azimuth_angle_NS_rotation = atand( (sind(zenith_angle).*sind(solar_azimuth_angle))./(cosd(tracking_angle_NS_rotation_primed).*sind(latitude)) + 180.*C1_NS_rotated.*C2_NS_rotated );
 
+% for a plane that is continuously tracking about two axes to minimuse the
+% AOI, we can assume that AOI is 0
+tracking_angle_of_incidence_dual_axis = 0;
+tracking_slope_dual_axis = solar_altitude;
+tracking_azimuth_angle_dual_azis = solar_azimuth_angle;
 
-function angle_of_incidence = AngleOfIncidence(declination_angle,hour_angle,latitude,tilt,azimuth)
-    angle_of_incidence = real(acosd( sind(declination_angle).*sind(latitude).*cosd(tilt)...
-        -sind(declination_angle).*cosd(latitude).*sind(tilt).*cosd(azimuth)...
-        +cosd(declination_angle).*cosd(latitude).*cosd(tilt).*cosd(hour_angle)...
-        +cosd(declination_angle).*sind(tilt).*sind(azimuth).*sind(hour_angle) ));
-end
+%% 1.8 Ratio of beam radiation on tilted surface to that on horizontal surface.
+
+% the geometric factor Rb is the ratio of beam on tilted to that on a
+% horizontal at any time. 
+% Rb = Bt/Bh = (Bn*cos(AOI))/(Bn*cos(zen)); therefore Rb = AOI/zenith
+Rb = angles_of_incidence ./ zenith_angle;
+
 
 
 
